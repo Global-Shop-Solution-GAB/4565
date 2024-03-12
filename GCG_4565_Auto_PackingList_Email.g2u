@@ -1,0 +1,186 @@
+Program.Sub.ScreenSU.Start
+Gui.F_Email..Create
+Gui.F_Email..Size(6585,6705)
+Gui.F_Email..MinX(0)
+Gui.F_Email..MinY(0)
+Gui.F_Email..Position(0,0)
+Gui.F_Email..BackColor(-2147483633)
+Gui.F_Email..MaxButton(False)
+Gui.F_Email..MousePointer(0)
+Gui.F_Email..Sizeable(False)
+Gui.F_Email..Event(UnLoad,F_Email_UnLoad)
+Gui.F_Email..Caption("Packing List Email")
+Gui.F_Email.lbl1.Create(Label,"Recipient",True,1935,255,0,105,105,True,0,"Arial",8,-2147483633,0)
+Gui.F_Email.txtRecipient.Create(TextBox,"",True,3345,300,0,105,315,True,0,"Arial",8,-2147483643,1)
+Gui.F_Email.lbl2.Create(Label,"Subject",True,1935,255,0,105,735,True,0,"Arial",8,-2147483633,0)
+Gui.F_Email.txtSubject.Create(TextBox,"",True,6210,300,0,105,945,True,0,"Arial",8,-2147483643,1)
+Gui.F_Email.lbl3.Create(Label,"Body",True,1935,255,0,105,1335,True,0,"Arial",8,-2147483633,0)
+Gui.F_Email.txtBody.Create(TextboxM)
+Gui.F_Email.txtBody.Size(6270,4110)
+Gui.F_Email.txtBody.Position(105,1560)
+Gui.F_Email.cmdSend.Create(Button)
+Gui.F_Email.cmdSend.Size(855,375)
+Gui.F_Email.cmdSend.Position(105,5805)
+Gui.F_Email.cmdSend.Caption("Send")
+Gui.F_Email.cmdSend.Event(Click,cmdSend_Click)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.F_Email_UnLoad.Start
+f.Intrinsic.Control.End
+Program.Sub.F_Email_UnLoad.End
+
+Program.Sub.cmdSend_Click.Start
+f.Intrinsic.Control.Try
+
+v.Local.iRunID.Declare(Long)
+v.Local.iLogID.Declare(Long)
+v.Local.sValue.Declare(String)
+v.Local.sParam.Declare(String)
+v.Local.sRecipient.Declare(String)
+v.Local.iUserID.Declare(Long)
+v.Local.sSender.Declare(String)
+v.Local.sTemp.Declare(String)
+
+Gui.F_Email.cmdSend.Enabled(False)
+
+'we have an email so we need to save the report and send the email
+f.Global.BI.GetRunID(v.Local.iRunID)
+f.Global.BI.StartLogging(v.Local.iRunID,51,-1,"",v.Local.iLogID)
+v.Local.sParam.Set("Terminal*!*REPORTID")
+f.Intrinsic.String.Build("{0}*!*{1}",v.Passed.BIP_Terminal,v.Passed.BIP_REPORTID,v.Local.sValue)
+f.Global.BI.StopLogging(v.Local.iLogID)
+
+f.Global.BI.RunReportPreProcessor(v.Local.iRunID,v.Local.iLogID,v.Local.sParam,v.Local.sValue,"",4,True,"",-1,"",0,v.Screen.F_Email!txtRecipient.MetaData1,"",v.Local.iLogID)
+
+f.Intrinsic.String.Build("{0}*!*{1}",V.Screen.F_Email!txtRecipient.Text.Trim,V.Screen.F_Email!txtRecipient.Text.Trim,v.Local.sRecipient)
+f.Global.Security.GetUserId(v.Caller.User,v.Caller.CompanyCode,v.Local.iUserID)
+f.Global.Security.GetUserEmail(v.Caller.User,v.Local.sSender)
+f.Global.Security.GetFullName(v.Caller.User,v.Local.sTemp)
+f.Intrinsic.String.Build("{0}*!*{1}",v.Local.sSender,v.Local.sTemp,v.Local.sSender)
+
+f.Global.Messaging.QueueMessage(v.Caller.CompanyCode,v.Local.iUserID,"GCG_4565",v.Screen.F_Email!txtSubject.Text.Trim,v.Local.sSender,v.Local.sRecipient,v.Screen.F_Email!txtBody.Text.Trim,-1,"",False,"","","","","","","",v.Screen.F_Email!txtRecipient.MetaData0,True)
+
+Gui.F_Email..Visible(False)
+
+f.Intrinsic.Control.Catch
+v.Local.sError.Declare(String)
+Function.Intrinsic.String.Concat("Project: GCG_3620_GridView_Close.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+F.Intrinsic.UI.Msgbox(V.Local.sError)
+f.Intrinsic.Control.End
+f.Intrinsic.Control.EndTry
+Program.Sub.cmdSend_Click.End
+
+Program.Sub.Main.Start
+f.Intrinsic.Control.Try
+'on hook 16090 we check for report 000051 packing list
+'if this is it then we need to get the terminal and look in the BI_Packing_List table for the Orders we are doing.
+'we need to  send an email to the customer using the template email. Attaching the packing list to the email.
+v.Local.sSQL.Declare(String)
+v.Local.sFile.Declare(String)
+v.Local.sSubjectTemp.Declare(String)
+v.Local.sBodyTemp.Declare(String)
+v.Local.sAttachmentE.Declare(String)
+v.Local.sAttachmentR.Declare(String)
+v.Local.bExist.Declare(Boolean)
+v.Local.sSubject.Declare(String)
+v.Local.sBody.Declare(String)
+v.Local.bAllowed.Declare(Boolean)
+
+f.Intrinsic.Control.If(v.Caller.Hook,=,16090)
+	f.Intrinsic.Control.If(v.Passed.BIP_REPORTID,=,"000051")
+		'User must be in PACKING group to be allowed to send an email
+		f.Global.Security.IsInGroup(v.Caller.User,"PACKING",v.Local.bAllowed)
+		f.Intrinsic.Control.If(v.Local.bAllowed,=,False)
+			f.Intrinsic.Control.End
+		f.Intrinsic.Control.EndIf
+		'we are printing the packing list
+		f.ODBC.Connection!Con.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass)
+		'lets populate the email part so we can use it in all emails
+		f.Intrinsic.String.Build("{0}\GCG_4565_EmailTemplate{1}.txt",v.Caller.GasDir,v.Caller.CompanyCode,v.Local.sFile)
+		f.Intrinsic.File.Exists(v.Local.sFile,v.Local.bExist)
+		f.Intrinsic.Control.If(v.Local.bExist,=,True)
+			'file exists so we need to read it and set up our template
+			f.Intrinsic.File.File2String(v.Local.sFile,v.Local.sBodyTemp)
+			f.Intrinsic.String.Split(v.Local.sBodyTemp,"*!*",v.Local.sBodyTemp)
+			f.Intrinsic.Control.If(v.Local.sBodyTemp.UBound,>,0)
+				'we have subject and body.
+				v.Local.sSubjectTemp.Set(v.Local.sBodyTemp(0).Trim)
+				v.Local.sBodyTemp(0).Set(v.Local.sBodyTemp(1).Trim)
+				v.Local.sBodyTemp.RedimPreserve(0,0)
+			f.Intrinsic.Control.EndIf
+		f.Intrinsic.Control.Else
+			'file does not exist.
+			f.Intrinsic.String.Build("{0} does not exist. Please create the file and your email template.",v.Local.sFile,v.Local.sSQL)
+			f.Intrinsic.UI.Msgbox(v.Local.sSQL)
+			f.ODBC.Connection!Con.Close
+			f.Intrinsic.Control.End
+		f.Intrinsic.Control.EndIf
+		
+		f.Intrinsic.String.Build("SELECT DISTINCT ORDER_NO, CUSTOMER FROM V_BI_PACKING_LIST WHERE TERMINAL = '{0}' AND RPTID = '000051'",V.Passed.BIP_Terminal,v.Local.sSQL)
+		f.ODBC.Connection!Con.OpenLocalRecordsetRO("rstList",v.Local.sSQL)
+		f.Intrinsic.Control.DoUntil(v.ODBC.Con!rstList.EOF,=,True)
+			'we need to get the customer email to send it to.
+			f.Intrinsic.String.Build("SELECT CONTACT, CONTACT_EMAIL FROM V_ORDER_BILL_TO WHERE ORDER_NO = '{0}'",V.ODBC.Con!rstList.FieldVal!ORDER_NO,V.Local.sSQL)
+			f.ODBC.Connection!Con.OpenLocalRecordsetRO("rstContact",v.Local.sSQL)
+			f.Intrinsic.Control.If(v.ODBC.Con!rstContact.EOF,=,False)
+				f.Intrinsic.Control.If(v.ODBC.Con!rstContact.FieldValTrim!CONTACT_EMAIL,<>,"")
+					
+					
+					'Now that we have the report we can send the email
+					
+					
+					Gui.F_Email.txtRecipient.Text(v.ODBC.Con!rstContact.FieldValTrim!CONTACT_EMAIL)
+					
+					f.Intrinsic.String.Build("{0}\{1}{2}.pdf",v.Caller.GasDir,v.ODBC.Con!rstList.FieldValTrim!ORDER_NO,V.ODBC.Con!rstList.FieldValTrim!CUSTOMER,V.Local.sAttachmentR)
+					f.Intrinsic.String.Build("{0}{1}.pdf*!*{2}",v.ODBC.Con!rstList.FieldValTrim!ORDER_NO,V.ODBC.Con!rstList.FieldValTrim!CUSTOMER,v.Caller.GasDir,v.Local.sAttachmentE)
+					Gui.F_Email.txtRecipient.SetMetaData(v.Local.sAttachmentE,v.Local.sAttachmentR)
+					
+					'need to replace the SUBJECT fields
+					f.Intrinsic.String.Replace(v.Local.sSubjectTemp,"%CUSTOMER%",V.ODBC.Con!rstList.FieldValTrim!CUSTOMER,V.Local.sSubject)
+					F.Intrinsic.String.Replace(V.Local.sSubject,"%ORDER_NO%",V.ODBC.Con!rstList.FieldValTrim!ORDER_NO,V.Local.sSubject)
+					F.Intrinsic.String.Replace(V.Local.sSubject,"%CONTACT%",V.ODBC.Con!rstContact.FieldValTrim!CONTACT,V.Local.sSubject)
+					f.Intrinsic.Control.If(v.Local.sSubject,=,"")
+						'subject is blank so default it to something
+						v.Local.sSubject.Set("Packing List Confirmation")
+					f.Intrinsic.Control.EndIf
+					Gui.F_Email.txtSubject.Text(v.Local.sSubject)
+					
+					f.Intrinsic.String.Replace(v.Local.sBodyTemp,"%CUSTOMER%",V.ODBC.Con!rstList.FieldValTrim!CUSTOMER,V.Local.sBody)
+					F.Intrinsic.String.Replace(V.Local.sBody,"%ORDER_NO%",V.ODBC.Con!rstList.FieldValTrim!ORDER_NO,V.Local.sBody)
+					F.Intrinsic.String.Replace(V.Local.sBody,"%CONTACT%",V.ODBC.Con!rstContact.FieldValTrim!CONTACT,V.Local.sBody)
+					f.Intrinsic.Control.If(v.Local.sBody,=,"")
+						'body is blank so default it to something
+						f.Intrinsic.String.Build("{0},{1}Order {2} is in the process of being packaged.{1}Your order will be shipped soon.",v.ODBC.Con!rstContact.FieldValTrim!CONTACT,V.Ambient.NewLine,V.ODBC.Con!rstList.FieldValTrim!ORDER_NO,V.Local.sBody)
+					f.Intrinsic.Control.EndIf
+					Gui.F_Email.txtBody.Text(v.Local.sBody)
+
+					Gui.F_Email.cmdSend.Enabled(True)
+					Gui.F_Email..Show
+					Gui.F_Email..WaitForDismiss
+					
+				f.Intrinsic.Control.EndIf
+			f.Intrinsic.Control.EndIf
+			f.ODBC.Con!rstContact.Close
+			
+			f.ODBC.Con!rstList.MoveNext
+		f.Intrinsic.Control.Loop
+		f.ODBC.Con!rstList.Close
+		f.ODBC.Connection!Con.Close
+		f.Intrinsic.Control.End
+	f.Intrinsic.Control.Else
+		f.Intrinsic.Control.End
+	f.Intrinsic.Control.EndIf
+f.Intrinsic.Control.Else
+	f.Intrinsic.Control.End
+f.Intrinsic.Control.EndIf
+
+f.Intrinsic.Control.Catch
+v.Local.sError.Declare(String)
+Function.Intrinsic.String.Concat("Project: GCG_3620_GridView_Close.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+F.Intrinsic.UI.Msgbox(V.Local.sError)
+f.Intrinsic.Control.End
+f.Intrinsic.Control.EndTry
+Program.Sub.Main.End
